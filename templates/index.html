@@ -1,12 +1,20 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>PDF to DOCX Converter</title>
+    <title>PDF Converter</title>
 </head>
 <body>
-    <h2>Upload PDF to convert to DOCX</h2>
-    <form method="POST" enctype="multipart/form-data">
-        <input type="file" name="pdf_file" accept=".pdf" required>
+    <h1>Convert PDF</h1>
+    <form method="post" enctype="multipart/form-data">
+        <label for="pdf_file">Upload PDF:</label>
+        <input type="file" name="pdf_file" required><br><br>
+
+        <label for="conversion_type">Choose conversion:</label><br>
+        <input type="radio" name="conversion_type" value="word" checked> PDF ➝ Word (Without OCR)<br>
+        <input type="radio" name="conversion_type" value="ocr"> PDF ➝ Word (With OCR for scanned documents)<br>
+        <input type="radio" name="conversion_type" value="excel"> PDF ➝ Excel<br><br>
+
+
         <button type="submit">Convert</button>
     </form>
 </body>
