@@ -2,15 +2,28 @@ from flask import Flask, render_template, request, send_file
 import fitz  # PyMuPDF
 from docx import Document
 import os
-import camelot
+import pdfplumber
 import pandas as pd
 from pdf2image import convert_from_path
 import pytesseract
-from openpyxl import Workbook
 
 app = Flask(__name__)
 UPLOAD_FOLDER = 'uploads'
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+
+def make_columns_unique(cols):
+    """Ensure all column names are unique by adding suffixes to duplicates."""
+    seen = {}
+    new_cols = []
+    for c in cols:
+        if c in seen:
+            seen[c] += 1
+            new_cols.append(f"{c}_{seen[c]}")
+        else:
+            seen[c] = 0
+            new_cols.append(c)
+    return new_cols
 
 
 @app.route('/', methods=['GET', 'POST'])
@@ -26,14 +39,13 @@ def index():
         pdf_path = os.path.join(UPLOAD_FOLDER, pdf_file.filename)
         pdf_file.save(pdf_path)
 
-        # Get conversion type from form
         conversion_type = request.form.get("conversion_type")
 
+        # -------- PDF to Word --------
         if conversion_type == "word":
             docx_filename = pdf_file.filename.rsplit('.', 1)[0] + '.docx'
             docx_path = os.path.join(UPLOAD_FOLDER, docx_filename)
 
-            # Extract text
             doc = Document()
             with fitz.open(pdf_path) as pdf:
                 for page in pdf:
@@ -44,21 +56,30 @@ def index():
             doc.save(docx_path)
             return send_file(docx_path, as_attachment=True)
 
+        # -------- PDF to Excel --------
         elif conversion_type == "excel":
             excel_filename = pdf_file.filename.rsplit('.', 1)[0] + '.xlsx'
             excel_path = os.path.join(UPLOAD_FOLDER, excel_filename)
+            all_tables = []
 
-            try:
-                tables = camelot.read_pdf(pdf_path, pages='all')
-                writer = pd.ExcelWriter(excel_path, engine='openpyxl')
-                for i, table in enumerate(tables):
-                    table.df.to_excel(writer, sheet_name=f'Table_{i+1}', index=False)
-                writer.close()
-            except Exception as e:
-                return f"Error extracting tables: {e}"
+            with pdfplumber.open(pdf_path) as pdf:
+                for page in pdf.pages:
+                    tables = page.extract_tables()
+                    for t in tables:
+                        if len(t) < 2:
+                            continue  # skip empty or single-row tables
+                        df = pd.DataFrame(t[1:], columns=make_columns_unique(t[0]))
+                        all_tables.append(df)
+
+            if all_tables:
+                final_df = pd.concat(all_tables, ignore_index=True)
+                final_df.to_excel(excel_path, index=False)
+            else:
+                pd.DataFrame().to_excel(excel_path, index=False)
 
             return send_file(excel_path, as_attachment=True)
 
+        # -------- PDF OCR to Word --------
         elif conversion_type == "ocr":
             docx_filename = pdf_file.filename.rsplit('.', 1)[0] + '_ocr.docx'
             docx_path = os.path.join(UPLOAD_FOLDER, docx_filename)
